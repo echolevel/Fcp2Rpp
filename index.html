@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            font-family: monospace;
+            font-size: 15px;
+            background: #fcfcfc;
+            width: 800px;
+            margin: 0 auto;
+        }
+        
+    </style>
+    <title>FCPXML to RPP Converter</title>
+</head>
+<body>
+    <h2>FCPXML to RPP Converter</h2>
+
+    <br/><br/>
+
+    <input type="file" id="fileInput" accept=".fcpxml">
+
+    <label for="outFilename">Output filename:</label>
+    <input type="text" id="outFilename" placeholder="output" oninput="previewFilename()" />
+    <button id="convertButton" onclick="convertFile()">Save as output.rpp</button>
+
+    <br/><br/>
+
+    <p>
+        I wrote this tool this afternoon (26th March 2025) to get a Final Cut Pro timeline into Reaper (via DaVinci Resolve) for a dialogue editing/audio post job. 
+        I'm using whatever the latest versions of Reaper and Resolve are (I updated Resolve last night, Reaper last week). 
+        Which version of FCP my editor's using, I couldn't say...
+        <br/>
+        <br/>
+        <h3>Workflow</h3>
+        First I imported the fcpxml from Final Cut Pro into Resolve, so I could check the original export had worked, then I 
+        exported my Resolve timeline as an fcpxml to use in this script. Conversions straight from Final Cut Pro have been weird for me; 
+        it's easier and safer to clean things up in Resolve and then only export what you need for your audio work.
+        <br/>
+        <br/>
+        As long as the filenames are preserved and you have matching source files (e.g. production BWFs or whatever), they should
+        all be found after you tell Reaper where to look for the first one.
+        <br/>
+        <br/>
+        The RPP created by this tool is a barebones project with the audio clips assembled and everything else ignored. If your editor's 
+        sent you a rough cut video file, and it lines up correctly with the start time, import it into Reaper yourself.
+        <br/>
+        <br/>
+        If you need to bring the timeline into an existing project, I suggest saving this one as a template track (opting to include media files),
+        then loading it from template in your existing project. Wrapping it in a named folder track first might make things less confusing.
+        That's probably the best way to work in a project that's set up with your normal preferences and defaults, since I don't think loading 
+        the rpp directly will merge with your default project's options... 
+        <br/>
+        
+        <h3>Disclaimer</h3>
+        It might not work for you. It worked for the specific job I needed it to work on, eventually, but there's plenty of 
+        batshit nonsense going on in the fcpxml spec that I haven't accounted for which might make it fall over on more complex source projects.
+        On the other hand, the minimalist nature of this tool might be its strength... 
+        
+        <h3>Here's how it works (when it works, if it works):</h3>
+
+        <ul>
+            <li>
+                writes some boilerplate RPP structural XML guff
+            </li>
+            <li>
+                gets all of the asset reference IDs, asset filenames, asset starting timecodes and asset durations (this is just info about each WAV, not about how timeline clips which reference these WAVs are laid out)
+            </li>
+            <li>
+                works out the timeline start time from the initial gap (is there always an initial gap? I don't know...maybe this breaks without one)
+            </li>
+            <li>
+                goes through all of the asset-clips, getting name, ref ID, start, duration and offset (this IS the info about each timeline item's position, with reference to the aforementioned WAV assets)
+            </li>
+            <li>
+                creates a Reaper track for each clip name - this could get mad on complex projects, but on e.g. documentaries or corporates where each speaker is cut from a single long take, it's useful. Will be optional in future.
+            </li>
+            <li>
+                writes some Reaper media item XML for each clip in its appropriate track with these ITEM attributes set: POSITION (offset - timelinestart); LENGTH (duration); SOFFS (start - assetstartingtimecode); NAME; and SOURCE WAVE
+            </li>
+        </ul>
+        
+        <h3>To Do</h3>
+        I should make some track organisation things optional - assign track by source file (current behaviour), or everything on one track (overlaps be damned), or each item on its own track (crazy but just might work, etc.)
+        I probably also need to look into better (or any) handling of fades, overlaps on multiple lanes, crossfades etc.
+        
+        <br/><br/>
+
+        But let's face it: if you're using this on a job, then something's gone horribly wrong already. A better solution for anything large and/or critical might be to buy AATranslator or Vordio.        
+        
+        <br/><br/>
+    </p>
+
+    
+
+
+    <script>
+        function previewFilename()
+        {
+            var outname = document.getElementById('outFilename').value + ".rpp";
+            document.getElementById('convertButton').innerHTML = "Save as " + outname;
+        }
+
+        function convertFile() {
+            const fileInput = document.getElementById('fileInput');
+            if (!fileInput.files.length) {
+                alert("Please select an FCPXML file.");
+                return;
+            }
+
+            const file = fileInput.files[0];
+            const reader = new FileReader();
+            
+            reader.onload = function(event) {
+                const parser = new DOMParser();
+                const xmlDoc = parser.parseFromString(event.target.result, "text/xml");
+
+                let rppContent = "<REAPER_PROJECT 0.1\n";
+                rppContent += "  TEMPO 120.000000 4 4\n";
+                rppContent += "  <PROJBAY";
+                rppContent += "\n>\n";
+
+                function parseTimeValue(timeStr) {
+                    const match = timeStr.match(/(\d+)\/(\d+)s/);
+                    if (match) {
+                        console.log(" Numerator: " + parseInt(match[1], 10) + "  Denom: " + parseInt(match[2], 10) + "  Result: " +  (parseInt(match[1], 10) / parseInt(match[2], 10)));
+                        return parseInt(match[1], 10) / parseInt(match[2], 10);
+                    }
+                    return parseFloat(timeStr) || 0;
+                }
+
+                // First get the asset filenames and IDs 
+                const assetMap = new Map();
+                const assets = xmlDoc.querySelectorAll("resources asset");
+
+                assets.forEach(asset => {
+                    if(!asset.hasAttribute('hasVideo')){
+                        var assetid = asset.getAttribute("id");
+
+                        var src = asset.getElementsByTagName('media-rep')[0].getAttribute("src");
+                        var mediafilename = src.split('/').pop();
+                        
+                        // This ASSET'S starting timecode, which may be the original production TOD TC pre-edit.
+                        // Subtract this from the CLIP'S start or offset later
+                        var assetstart = parseTimeValue(asset.getAttribute("start"));
+                        var assetduration = parseTimeValue(asset.getAttribute("duration"));
+                        
+                        // Clip names can change, so using asset ID seems safest.
+                        // We can derive clip name (for Reaper) later by removing .WAV extension from mediafilename.
+                        assetMap.set(assetid, {mediafilename, assetstart, assetduration});
+                    }                                    
+                });
+
+                
+
+                var timelinestart = 0.0;
+                
+                const gaps = xmlDoc.querySelectorAll("sequence spine gap");
+                if(gaps.length > 0)
+                {
+                    timelinestart = parseTimeValue(gaps[0].getAttribute("start") || "0/1s");
+                    console.log("Found gap start: " + timelinestart);
+                }
+
+                const trackMap = new Map();
+
+                const clips = xmlDoc.querySelectorAll("sequence spine gap asset-clip");
+                
+                
+
+                clips.forEach(clip => {
+                    const name = clip.getAttribute("name") || "Unnamed Clip";
+                    const refID = clip.getAttribute("ref");
+                    console.log("refID: " + refID);
+
+                    const offset = parseTimeValue(clip.getAttribute("offset") || "0/1s")
+                    const start = parseTimeValue(clip.getAttribute("start") || "0/1s");
+                    const duration = parseTimeValue(clip.getAttribute("duration") || "1/1s");
+
+                    // Add a new track for each clip name
+                    if (!trackMap.has(name)) {
+                        trackMap.set(name, []);
+                    }
+                    
+                    
+                    trackMap.get(name).push({ offset, start, duration, name, refID });
+                });
+                
+                
+                console.log(trackMap);
+                trackMap.forEach((items, trackName) => {
+                    rppContent += `  <TRACK\n`;
+                    rppContent += `     NAME "${trackName}"\n`
+                    items.forEach(({ offset, start, duration, name, refID }) => {
+
+                        // Find the matching asset by ID
+                        var assetstart = 0.0;
+                        if(assetMap.has(refID)){
+                            assetstart = assetMap.get(refID).assetstart;
+                        }
+
+                        rppContent += `    <ITEM\n`;
+                        // For testing
+                        //rppContent += `      ASSETSTART ${assetstart - timelinestart}\n`;
+
+                        // This seems correct for trigger position on timeline, NOT reaper's 'start in source' (ie SOFFS)
+                        rppContent += `      POSITION ${offset - timelinestart}\n`;
+
+                        // This seems correct for the edited clip (ie trimmed with handles)
+                        rppContent += `      LENGTH ${duration}\n`;
+
+                        
+                        rppContent += `      SOFFS ${start - assetstart}\n`;
+                        rppContent += `      NAME "${name}"\n`;
+                        rppContent += `      <SOURCE WAVE\n        FILE \"${name}\"\n      >\n`;
+                        rppContent += `    >\n`;
+                    });
+                    rppContent += `  >\n`; // End TRACK    
+                });
+                
+                
+
+                rppContent += ">\n";
+                var outName = document.getElementById('outFilename').value;
+                if(outName.length > 0)
+                {
+                    downloadRPP(rppContent, outName + ".rpp");
+                }
+                else
+                {
+                    downloadRPP(rppContent, "output.rpp");
+                }
+                
+            };
+            
+            reader.readAsText(file);
+        }
+
+        function downloadRPP(content, filename) {
+            const blob = new Blob([content], { type: "text/plain" });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+    </script>
+</body>
+</html>
