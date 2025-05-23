@@ -6,101 +6,170 @@
     <style>
         body {
             font-family: monospace;
-            font-size: 15px;
-            background: #fcfcfc;
+            font-size: 17px;
+            background: #1c1e1f;
             width: 800px;
+            font-weight: 450;
             margin: 0 auto;
+            color: #abc;
+        }
+        #results {
+            border: dashed 1px #ccc;
+            padding: 4px;
+            margin: 4px, 0px, 4px, 0px;
+            font-family: courier;
+        }
+        li {
+            padding-bottom: 1em;
+        }
+        a {
+            color: #aaa;
         }
         
     </style>
     <title>FCPXML to RPP Converter</title>
 </head>
 <body>
-    <h2>FCPXML to RPP Converter</h2>
+    <h2>FCPXML to RPP Converter by <a href="http://echolevel.co.uk">echolevel</a></h2>
 
     <br/><br/>
 
-    <input type="file" id="fileInput" accept=".fcpxml">
+    <label for="fileInput">Input:</label>
+    <input type="file" id="fileInput" accept=".fcpxml" onchange="convertFile()">
+    
 
-    <label for="outFilename">Output filename:</label>
+    <label for="outFilename">Output:</label>
     <input type="text" id="outFilename" placeholder="output" oninput="previewFilename()" />
-    <button id="convertButton" onclick="convertFile()">Save as output.rpp</button>
+    <button id="convertButton" onclick="downloadRPP()">Save as output.rpp</button>
 
     <br/><br/>
+    <input type="checkbox" id="opt_volume" value="no"><label for="opt_volume"> Convert volume adjustments to item trim volume (experimental, doesn't handle envelopes)</label>
+    
+    <br/><br/>
 
-    <p>
-        I wrote this tool this afternoon (26th March 2025) to get a Final Cut Pro timeline into Reaper (via DaVinci Resolve) for a dialogue editing/audio post job. 
-        I'm using whatever the latest versions of Reaper and Resolve are (I updated Resolve last night, Reaper last week). 
-        Which version of FCP my editor's using, I couldn't say...
-        <br/>
-        <br/>
-        <h3>Workflow</h3>
-        First I imported the fcpxml from Final Cut Pro into Resolve, so I could check the original export had worked, then I 
-        exported my Resolve timeline as an fcpxml to use in this script. Conversions straight from Final Cut Pro have been weird for me; 
-        it's easier and safer to clean things up in Resolve and then only export what you need for your audio work.
-        <br/>
-        <br/>
-        As long as the filenames are preserved and you have matching source files (e.g. production BWFs or whatever), they should
-        all be found after you tell Reaper where to look for the first one.
-        <br/>
-        <br/>
-        The RPP created by this tool is a barebones project with the audio clips assembled and everything else ignored. If your editor's 
-        sent you a rough cut video file, and it lines up correctly with the start time, import it into Reaper yourself.
-        <br/>
-        <br/>
-        If you need to bring the timeline into an existing project, I suggest saving this one as a template track (opting to include media files),
-        then loading it from template in your existing project. Wrapping it in a named folder track first might make things less confusing.
-        That's probably the best way to work in a project that's set up with your normal preferences and defaults, since I don't think loading 
-        the rpp directly will merge with your default project's options... 
-        <br/>
+    <input type="radio" id="opt_tracks_default" name="opt_tracks" value="Attempt to recreate source timeline's track layout (default)" checked onChange="convertFile()">
+    <label for="opt_tracks_default">Attempt to recreate source timeline's track layout (default)</label><br/>
+
+    <input type="radio" id="opt_tracks_trackperitem" name="opt_tracks" value="One Reaper track per item" onChange="convertFile()">
+    <label for="opt_tracks_trackperitem">One Reaper track per item</label><br/>
+
+    <input type="radio" id="opt_tracks_onetrack" name="opt_tracks" value="All items on one Reaper track" onChange="convertFile()">
+    <label for="opt_tracks_onetrack">All items on one Reaper track</label><br/>
+    
+    <br/>
+    
+    <h3>Log</h3>
+    <div id="results">
+        Waiting for input...
+    </div>
+
+    <br/>
+
+    <p>        
+        <h3>About</h3>
+        <ul>
+            
+                This tool was written in a hurry one afternoon to get a Final Cut Pro timeline into Reaper (via DaVinci Resolve) for a 
+                dialogue editing/audio post job. It was updated later to handle an Adobe Premiere timeline.
+                <br/>
+                <br/>
+                Don't expect it to be very robust. DaVinci Resolve is used as a middle-man chiefly to clean up the source timeline and 
+                to make things as easy as possible for this tool. The point is not to preserve every nuance of a picture editor's rough 
+                sound mix from FCP/Premiere, it's simply to ensure that you can start your work on the sound mix with every item of 
+                source media linked and synced.                
+                <br/>
+                <br/>
+                Volume adjustments, particularly made using keyframed envelopes, are troublesome to convert and are probably best 
+                ignored - after all, you're probably starting a mix from scratch anyway.
+                <br/>
+                <br/>
+                Finally, if (or when) this tool doesn't do what you need, please don't count on my having the time to fix or improve it.
+                Just go and buy AATranslator or Vordio instead - they're mature tools, well maintained by helpful developers, and excellent value for money.
+                <br/>
+                <br/>
+                <a href="https://github.com/echolevel/Fcp2Rpp"/>The source code for this tool is available on github</a>
+            
+        </ul>
         
-        <h3>Disclaimer</h3>
-        It might not work for you. It worked for the specific job I needed it to work on, eventually, but there's plenty of 
-        batshit nonsense going on in the fcpxml spec that I haven't accounted for which might make it fall over on more complex source projects.
-        On the other hand, the minimalist nature of this tool might be its strength... 
+        <br/>
+         
+        
+        <br/>
+        <h3>Usage</h3>
+        <ol>
+            <li>Use DaVinci Resolve to import an XML timeline from Final Cut Pro or Adobe Premiere</li>
+            <li>Do some cleanup - remove any unlinked clips, all video clips, any unused tracks, etc.</li>
+            <li>Export an FCPXML timeline via File->Export->Timeline then 'Save as type:' FCPXML 1.9 Files (*.fcpxml)</li>
+            <li>Load the newly created file in Fcp2Rpp with the 'Choose file' button above</li>
+            <li>Conversion will happen immediately with the Log showing what's what - if anything's gone wrong, now is when you might spot it</li>
+            <li>Conversion runs again if options are changed</li>
+            <li>Click 'Save as...' to save the Reaper project to your local machine, with a custom filename if you'd like</li>
+            <li>Open the project in Reaper, at which point you'll probably need to search for the source media files which Reaper will do automatically if you point it at a root directory</li>
+            <li>Hopefully you'll see a very similar track/item layout to the one you saw in Resolve!</li>
+            <li>If you need to bring the timeline into an existing project, I suggest saving this one as a template track (opting to include media files), 
+                then loading it from template in your existing project. Wrapping it in a named folder track first might make things less confusing. 
+                This is ideal if you want to work in a project that's set up with your normal preferences and defaults, 
+                since loading the rpp directly won't merge with your default project's options</li>
+        </ol>
+
+        <br/><br/>
         
         <h3>Here's how it works (when it works, if it works):</h3>
 
         <ul>
             <li>
-                writes some boilerplate RPP structural XML guff
+                writes some boilerplate structural XML for the output RPP file 
             </li>
             <li>
                 gets all of the asset reference IDs, asset filenames, asset starting timecodes and asset durations (this is just info about each WAV, not about how timeline clips which reference these WAVs are laid out)
             </li>
             <li>
-                works out the timeline start time from the initial gap (is there always an initial gap? I don't know...maybe this breaks without one)
+                works out the timeline start time, factoring in an initial gap if there is one
             </li>
             <li>
-                goes through all of the asset-clips, getting name, ref ID, start, duration and offset (this IS the info about each timeline item's position, with reference to the aforementioned WAV assets)
-            </li>
-            <li>
-                creates a Reaper track for each clip name - this could get mad on complex projects, but on e.g. documentaries or corporates where each speaker is cut from a single long take, it's useful. Will be optional in future.
-            </li>
+                goes through all of the asset-clips, getting name, ref ID, start, lane (which we'll use as a destination track number) duration and offset (this IS the info about each timeline item's position, with reference to the aforementioned WAV assets)
+            </li>            
             <li>
                 writes some Reaper media item XML for each clip in its appropriate track with these ITEM attributes set: POSITION (offset - timelinestart); LENGTH (duration); SOFFS (start - assetstartingtimecode); NAME; and SOURCE WAVE
             </li>
         </ul>
         
+        <h3>Changes</h3>
+        2025-05-23        
+        <ul>
+            <li>
+                Added support for fcpxml timelines <i>without</i> a leading gap.
+            </li>
+            <li>
+                Now the conversion is performed when you select a file, so you can see if the converter has actually achieved anything before you download the (potentially blank) Reaper project.
+            </li>
+            <li>
+                Added the ability to import timeline clips from nested/child tracks, rather than just &lt;asset-clip&gt;
+            </li>
+        </ul>
+        
+
         <h3>To Do</h3>
-        I should make some track organisation things optional - assign track by source file (current behaviour), or everything on one track (overlaps be damned), or each item on its own track (crazy but just might work, etc.)
-        I probably also need to look into better (or any) handling of fades, overlaps on multiple lanes, crossfades etc.
+        I should look into how to force Reaper to crossfade overlapping clips, though this might be determined by project settings.
         
         <br/><br/>
 
-        But let's face it: if you're using this on a job, then something's gone horribly wrong already. A better solution for anything large and/or critical might be to buy AATranslator or Vordio.        
-        
-        <br/><br/>
     </p>
 
     
 
 
     <script>
+
+        var content = "";
+        var filename = "";
+        var resultslog = "";
+
         function previewFilename()
         {
             var outname = document.getElementById('outFilename').value + ".rpp";
             document.getElementById('convertButton').innerHTML = "Save as " + outname;
+            filename = outname;
         }
 
         function convertFile() {
@@ -125,22 +194,40 @@
                 function parseTimeValue(timeStr) {
                     const match = timeStr.match(/(\d+)\/(\d+)s/);
                     if (match) {
-                        console.log(" Numerator: " + parseInt(match[1], 10) + "  Denom: " + parseInt(match[2], 10) + "  Result: " +  (parseInt(match[1], 10) / parseInt(match[2], 10)));
+                        //console.log(" Numerator: " + parseInt(match[1], 10) + "  Denom: " + parseInt(match[2], 10) + "  Result: " +  (parseInt(match[1], 10) / parseInt(match[2], 10)));
                         return parseInt(match[1], 10) / parseInt(match[2], 10);
                     }
                     return parseFloat(timeStr) || 0;
+                }
+
+                /**
+                 * Convert a dB string (e.g. "-6", "0", "12", "-96") into Reaper trim.
+                 *  •  0 dB  ⇒ 1.00
+                 *  • +24 dB ⇒ ≈15.85 (Reaper shows 16.00)
+                 *  •  –6 dB ⇒ 0.50
+                 */
+                function dbToReaperTrim(dbStr) {
+                const db = parseFloat(dbStr);
+                if (isNaN(db)) {
+                    // fallback for invalid/missing input; you can choose 1.0 (0 dB) or 0.0
+                    return 1.0;
+                }
+                return Math.pow(10, db / 20);
                 }
 
                 // First get the asset filenames and IDs 
                 const assetMap = new Map();
                 const assets = xmlDoc.querySelectorAll("resources asset");
 
-                assets.forEach(asset => {
-                    if(!asset.hasAttribute('hasVideo')){
-                        var assetid = asset.getAttribute("id");
+                // Populate a Map of asset ID to asset info
+                var nonVideoCounter = 0;
 
+                assets.forEach(asset => {                    
+                    if(!asset.hasAttribute('hasVideo') && asset.hasAttribute('hasAudio') == "1"){
+
+                        var assetid = asset.getAttribute("id");
                         var src = asset.getElementsByTagName('media-rep')[0].getAttribute("src");
-                        var mediafilename = src.split('/').pop();
+                        var mediafilename = '"' + src.split('/').pop() + '"';
                         
                         // This ASSET'S starting timecode, which may be the original production TOD TC pre-edit.
                         // Subtract this from the CLIP'S start or offset later
@@ -150,50 +237,184 @@
                         // Clip names can change, so using asset ID seems safest.
                         // We can derive clip name (for Reaper) later by removing .WAV extension from mediafilename.
                         assetMap.set(assetid, {mediafilename, assetstart, assetduration});
+
+                        nonVideoCounter++;
                     }                                    
                 });
 
-                
+                resultslog += "Found " + assets.length + " source assets<br/>";            
+                resultslog += "Found " + nonVideoCounter + " audio source assets<br/>";    
 
                 var timelinestart = 0.0;
                 
+                // Check for a leading gap on the timeline
                 const gaps = xmlDoc.querySelectorAll("sequence spine gap");
                 if(gaps.length > 0)
                 {
                     timelinestart = parseTimeValue(gaps[0].getAttribute("start") || "0/1s");
                     console.log("Found gap start: " + timelinestart);
+                    resultslog += "Found gap start: " + timelinestart + "<br/>";
                 }
 
-                const trackMap = new Map();
-
-                const clips = xmlDoc.querySelectorAll("sequence spine gap asset-clip");
+                // Assemble clips on tracks
+                const trackMap = new Map();                
                 
+                var trackCounter = 0;
                 
+                // Gather clips from both selectors
+                // We've got 
+                //  * asset-clip, which has lane plus all the audio info we need,
+                //  * clip -> audio, where the stuff we need is spread across both elements
+                //  * spine -> asset-clip, similarly.
+                
+                //  <asset-clip> always gives us a lane number
+                //  <clip> always gives us a lane number, and we filter out any clips that don't parent an <audio>
+                //  Some <clips> don't have a lane number because they're descended from an extra spine, which does.
+                //  So we need to catch these clips and process them separately.
+                
+                // First, we want only the asset-clips that have a lane
+                const assetClips = Array.from(xmlDoc.querySelectorAll("asset-clip")).filter(c=>c.hasAttribute('lane'));
+                // Then only the audio-owning clips that have a lane
+                const plainClips = Array.from(xmlDoc.querySelectorAll("clip")).filter(c=>c.querySelector('audio') && c.hasAttribute('lane'));
+                // Finally, only the audio-owning clips which are owned by a spine with a lane
+                const plainSpineClips = Array.from(xmlDoc.querySelectorAll("spine")).filter(c=>c.hasAttribute('lane') && c.querySelector('audio'));
 
-                clips.forEach(clip => {
+                resultslog += `Found ${assetClips.length + plainClips.length + plainSpineClips.length} audio clips on timeline<br/>`;
+
+                //    What we need for every clip is:
+                //    lane (target Reaper track)
+                //    name (WAV filename and Reaper media item name)
+                //    offset (Reaper SOFFS, ie internal to item)
+                //    start (timeline position)
+                //    duration (clip duration)
+                //    refID (which source asset to refer to)
+                //    enabled (whether to mute in Reaper?) TO DO
+
+               let maxLanes = 0;
+               const allLanes = Array.from(xmlDoc.querySelectorAll("spine, clip, asset-clip")).filter(c=>c.hasAttribute('lane'));
+               allLanes.forEach(lane => {
+                const val = parseInt(lane.getAttribute('lane'), 10);
+                if (!isNaN(val) && val > maxLanes) {
+                    maxLanes = val;
+                }
+               });
+               console.log(maxLanes);
+               resultslog += "Found " + maxLanes + " lanes<br/>";
+               
+               //   Now we know how many lanes there are in the source project, we can populate a custom data struct with what we need.
+               //   We'll do a separate pass for each audio clip type, because finding lane number and timing info differs between them.
+               let newItems = [];
+               assetClips.forEach(clip => {
                     const name = clip.getAttribute("name") || "Unnamed Clip";
+                    const lane = clip.getAttribute("lane") || "No lane";
                     const refID = clip.getAttribute("ref");
-                    console.log("refID: " + refID);
-
                     const offset = parseTimeValue(clip.getAttribute("offset") || "0/1s")
                     const start = parseTimeValue(clip.getAttribute("start") || "0/1s");
                     const duration = parseTimeValue(clip.getAttribute("duration") || "1/1s");
+                    const adjustVolume = clip.querySelector('adjust-volume')?.getAttribute('amount') || "0";
+                    newItems.push({
+                        'name': name,
+                        'lane': lane,
+                        'refID': refID,
+                        'offset': offset,
+                        'start': start,
+                        'duration': duration,
+                        'adjustVolume' : dbToReaperTrim(adjustVolume).toFixed(2)
+                    });
+               });
 
-                    // Add a new track for each clip name
-                    if (!trackMap.has(name)) {
-                        trackMap.set(name, []);
-                    }
+               plainClips.forEach(clip => {
+                    // From owning <clip>
+                    const name = clip.getAttribute("name") || "Unnamed Clip";
+                    const lane = clip.getAttribute("lane") || "No lane";                    
+                    const offset = parseTimeValue(clip.getAttribute("offset") || "0/1s")
+                    const start = parseTimeValue(clip.getAttribute("start") || "0/1s");
+                    // From child <audio>
+                    const refID = clip.querySelector('audio').getAttribute("ref");
+                    const duration = parseTimeValue(clip.getAttribute("duration") || "1/1s");
+                    const adjustVolume = clip.querySelector('adjust-volume')?.getAttribute('amount') || "0";
+                    newItems.push({
+                        'name': name,
+                        'lane': lane,
+                        'refID': refID,
+                        'offset': offset,
+                        'start': start,
+                        'duration': duration,
+                        'adjustVolume' : dbToReaperTrim(adjustVolume).toFixed(2)
+                    });
+               });
+               
+               plainSpineClips.forEach(clip => {
+                    // From owning <spine>
+                    const lane = clip.getAttribute("lane") || "No lane";                    
+                    const offset = parseTimeValue(clip.getAttribute("offset") || "0/1s")
+                    // From intermediate <clip>
+                    const name = clip.querySelector('clip').getAttribute("name") || "Unnamed Clip";
+                    const duration = parseTimeValue(clip.querySelector('clip').getAttribute("duration") || "1/1s");
+                    const start = parseTimeValue(clip.querySelector('clip').getAttribute("start") || "0/1s");
+                    // From child <audio>
+                    const refID = clip.querySelector('clip audio').getAttribute("ref");
+                    const adjustVolume = clip.querySelector('clip adjust-volume')?.getAttribute('amount') || "0";
                     
-                    
-                    trackMap.get(name).push({ offset, start, duration, name, refID });
-                });
-                
-                
+                    newItems.push({
+                        'name': name,
+                        'lane': lane,
+                        'refID': refID,
+                        'offset': offset,
+                        'start': start,
+                        'duration': duration,
+                        'adjustVolume' : dbToReaperTrim(adjustVolume).toFixed(2)
+                    });
+               });
+
+               console.log(newItems);
+
+               const optDefault    = document.getElementById('opt_tracks_default');
+               const optOneTrack   = document.getElementById('opt_tracks_onetrack');
+               const optTrackPer   = document.getElementById('opt_tracks_trackperitem');
+
+               if (optOneTrack.checked) {
+                    //  All items on one track
+                    newItems.forEach(item => {
+                            if(!trackMap.has(0)){
+                                trackMap.set(0, []);                            
+                            }
+                            trackMap.get(0).push(item);
+                            
+                    });     
+                    trackCounter = 1;           
+               } else if (optTrackPer.checked) {
+                    //  One track per item
+                    for(var i = 0; i < newItems.length; i++)
+                    {
+                        if(!trackMap.has(i)){
+                                trackMap.set(i, []);
+                                trackCounter++;
+                            }
+                            trackMap.get(i).push(newItems[i]);    
+                    }                
+               } else {
+                    //  Push every new item to the appropriate track in the map. If the track doesn't exist yet, create it, and keep count for logging.
+                    newItems.forEach(item => {
+                            if(!trackMap.has(item.lane)){
+                                trackMap.set(item.lane, []);
+                                trackCounter++;
+                            }
+                            trackMap.get(item.lane).push(item);
+                    });
+               }
+               
+               
+
+                resultslog += "Creating " + (trackCounter + 1) + " Reaper tracks<br/>";
+                resultslog += "Ready to save RPP file<br/>";
+
                 console.log(trackMap);
+
                 trackMap.forEach((items, trackName) => {
                     rppContent += `  <TRACK\n`;
                     rppContent += `     NAME "${trackName}"\n`
-                    items.forEach(({ offset, start, duration, name, refID }) => {
+                    items.forEach(({ offset, start, duration, name, refID, adjustVolume }) => {
 
                         // Find the matching asset by ID
                         var assetstart = 0.0;
@@ -210,7 +431,10 @@
 
                         // This seems correct for the edited clip (ie trimmed with handles)
                         rppContent += `      LENGTH ${duration}\n`;
-
+                        if(document.getElementById('opt_volume').checked)
+                        {
+                            rppContent += `      VOLPAN ${adjustVolume} 0.0, 1.0, -1.0\n`;
+                        }
                         
                         rppContent += `      SOFFS ${start - assetstart}\n`;
                         rppContent += `      NAME "${name}"\n`;
@@ -224,25 +448,23 @@
 
                 rppContent += ">\n";
                 var outName = document.getElementById('outFilename').value;
-                if(outName.length > 0)
-                {
-                    downloadRPP(rppContent, outName + ".rpp");
-                }
-                else
-                {
-                    downloadRPP(rppContent, "output.rpp");
-                }
                 
+                content = rppContent;
+
+                document.getElementById('results').innerHTML = resultslog;
             };
             
             reader.readAsText(file);
         }
 
-        function downloadRPP(content, filename) {
+
+
+        function downloadRPP() {
             const blob = new Blob([content], { type: "text/plain" });
             const link = document.createElement("a");
             link.href = URL.createObjectURL(blob);
-            link.download = filename;
+            var outname = filename.length > 0 ? filename + ".rpp" : "output.rpp";
+            link.download = outname;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
