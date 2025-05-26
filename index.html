@@ -315,7 +315,7 @@
                let newItems = [];
                assetClips.forEach(clip => {
                     const name = clip.getAttribute("name") || "Unnamed Clip";
-                    const lane = clip.getAttribute("lane") || "No lane";
+                    lane = clip.getAttribute("lane") || "No lane";
                     if(lane === "No lane")
                     {
                         // Walk up the parents until we find the lane
