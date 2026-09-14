@@ -294,16 +294,6 @@
                     resultslog += "Found " + assets.length + " source assets<br/>";            
                     resultslog += "Found " + nonVideoCounter + " audio source assets<br/>";    
 
-                    var timelinestart = 0.0;
-                    
-                    // Check for a leading gap on the timeline
-                    const gaps = xmlDoc.querySelectorAll("sequence spine gap");
-                    if(gaps.length > 0)
-                    {
-                        timelinestart = parseTimeValue(gaps[0].getAttribute("start") || "0/1s");
-                        console.log("Found gap start: " + timelinestart);
-                        resultslog += "Found gap start: " + timelinestart + "<br/>";
-                    }
 
                     // Assemble clips on tracks
                     const trackMap = new Map();                
@@ -334,6 +324,18 @@
                         resultslog += "ERROR: couldn't find project timeline spine<br/>";
                         document.getElementById('results').innerHTML = resultslog;
                         return;
+                    }
+
+                    // Check for a leading gap on the timeline
+                    var timelinestart = 0.0;
+
+                    const firstTimelineItem = timelineSpine.firstElementChild;
+
+                    if(firstTimelineItem?.tagName === "gap")
+                    {
+                        timelinestart = parseTimeValue(firstTimelineItem.getAttribute("start") || "0/1s");
+                        console.log("Found gap start: " + timelinestart);
+                        resultslog += "Found gap start: " + timelinestart + "<br/>";
                     }
                     
                     const assetClips = Array.from(timelineSpine.querySelectorAll("asset-clip"));
