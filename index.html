@@ -323,7 +323,7 @@
                 // A pair of <asset-clip>s within a <spine> ARE A CROSSFADE                
 
                 // (but first check we can actually find a spine)
-                const timelineSpine = xmlDoc.querySelector("library event project sequence > spline");
+                const timelineSpine = xmlDoc.querySelector("library event project sequence > spine");
                 if(!timelineSpine)
                 {
                     resultslog += "ERROR: couldn't find project timeline spine<br/>";
@@ -413,6 +413,7 @@
                });
                
               
+
                 // turn synchronised clips into normal Reaper items that start at 
                 // the reference clip's timeline offset
                 refClips.forEach(refClip => {
