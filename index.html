@@ -202,6 +202,36 @@
                     return parseFloat(timeStr) || 0;
                 }
 
+                // lets us handle absent lanes properly rather than just shitting ourselves
+                function findLane(element)
+                {
+                    if (element.hasAttribute("lane"))
+                        return element.getAttribute("lane");
+
+                    const ancestor = element.parentElement?.closest('[lane]');
+
+                    return ancestor?.getAttribute("lane") || null;
+                }
+
+                // converts position of asset-clips nested in a synced clip's
+                // gaps/spines into the ref media sequence's timeframe 
+                function getSequencePosition(element, sequenceSpine)
+                {
+                    let position = parseTimeValue(element.getAttribute("offset") || "0/1s");
+                    let parent = element.parentElement;
+                
+                    while (parent && parent !== sequenceSpine)
+                    {
+                        const parentOffset = parseTimeValue(parent.getAttribute("offset") || "0/1s");
+                        const parentStart = parseTimeValue(parent.getAttribute("start") || "0/1s");
+                
+                        position = parentOffset + (position - parentStart);
+                        parent = parent.parentElement;
+                    }
+                
+                    return position;
+                }
+
                 /**
                  * Convert a dB string (e.g. "-6", "0", "12", "-96") into Reaper trim.
                  *  •  0 dB  ⇒ 1.00
@@ -222,6 +252,16 @@
                 // First get the asset filenames and IDs 
                 const assetMap = new Map();
                 const assets = xmlDoc.querySelectorAll("resources asset");
+
+                // and a map of resource-media 
+                const mediaMap = new Map();
+
+                xmlDoc.querySelectorAll("resources > media").forEach(media => {
+                    const id = media.getAttribute("id");
+
+                    if (id)
+                        mediaMap.set(id, media);
+                });
 
                 // Populate a Map of asset ID to asset info
                 var nonVideoCounter = 0;
@@ -280,16 +320,23 @@
                 // An <asset-clip> is a clip
                 // An <audio> within a <clip> is a LINKED CLIP - it will have a counterpart on another track
                 //      This sort of bullshit is almost certainly Premiere's fault for being insane about stereo files
-                // A pair of <asset-clip>s within a <spine> ARE A CROSSFADE
-                
-                
-                const assetClips = Array.from(xmlDoc.querySelectorAll("asset-clip"));
-                // Then only the audio-owning clips that have a lane
-                const plainClips = Array.from(xmlDoc.querySelectorAll("clip")).filter(c=>c.querySelector('audio') && c.hasAttribute('lane'));
-                // Finally, only the audio-owning clips which are owned by a spine with a lane
-                const plainSpineClips = Array.from(xmlDoc.querySelectorAll("spine")).filter(c=>c.hasAttribute('lane') && c.querySelector('audio'));
+                // A pair of <asset-clip>s within a <spine> ARE A CROSSFADE                
 
-                resultslog += `Found ${assetClips.length + plainClips.length + plainSpineClips.length} audio clips on timeline<br/>`;
+                // (but first check we can actually find a spine)
+                const timelineSpine = xmlDoc.querySelector("library event project sequence > spline");
+                if(!timelineSpine)
+                {
+                    resultslog += "ERROR: couldn't find project timeline spine<br/>";
+                    return;
+                }
+                
+                const assetClips = Array.from(timelineSpine.querySelectorAll("asset-clip"));
+                // Then only the audio-owning clips that have a lane
+                const plainClips = Array.from(timelineSpine.querySelectorAll("clip")).filter(c => c.querySelector('audio'));
+                // Finally, only the audio-owning clips which are owned by a spine with a lane
+                const refClips = Array.from(timelineSpine.querySelectorAll("ref-clip")).filter(c => c.getAttribute("srcEnable") === "audio");
+
+                resultslog += `Found ${assetClips.length + plainClips.length + refClips.length} candidate audio clips on timeline<br/>`;
 
                 //    What we need for every clip is:
                 //    lane (target Reaper track)
@@ -315,15 +362,20 @@
                //   We'll do a separate pass for each audio clip type, because finding lane number and timing info differs between them.
                let newItems = [];
                assetClips.forEach(clip => {
-                    const name = clip.getAttribute("name") || "Unnamed Clip";
-                    lane = clip.getAttribute("lane") || "No lane";
-                    if(lane === "No lane")
-                    {
-                        // Walk up the parents until we find the lane
-                        const ancestor = clip.closest('[lane]');
-                        lane = ancestor.getAttribute('lane');
-                    }
                     const refID = clip.getAttribute("ref");
+                    if (!assetMap.has(refID))
+                        return;
+
+                    const lane = findLane(clip);
+                    
+                    if (lane === null)
+                    {
+                        // just ignore clip assets with no lanes
+                        console.log("Skipping asset-clip with no lane:", clip);
+                        return;
+                    }
+                    
+                    const name = clip.getAttribute("name") || "Unnamed Clip";                    
                     const offset = parseTimeValue(clip.getAttribute("offset") || "0/1s")
                     const start = parseTimeValue(clip.getAttribute("start") || "0/1s");
                     const duration = parseTimeValue(clip.getAttribute("duration") || "1/1s");
@@ -360,18 +412,70 @@
                     });
                });
                
-               plainSpineClips.forEach(clip => {
-                    // From owning <spine>
-                    const lane = clip.getAttribute("lane") || "No lane";                    
-                    const offset = parseTimeValue(clip.getAttribute("offset") || "0/1s")
-                    // From intermediate <clip>
-                    const name = clip.querySelector('clip').getAttribute("name") || "Unnamed Clip";
-                    const duration = parseTimeValue(clip.querySelector('clip').getAttribute("duration") || "1/1s");
-                    const start = parseTimeValue(clip.querySelector('clip').getAttribute("start") || "0/1s");
-                    // From child <audio>
-                    const refID = clip.querySelector('clip audio').getAttribute("ref");
-                    const adjustVolume = clip.querySelector('clip adjust-volume')?.getAttribute('amount') || "0";
-                    
+              
+                // turn synchronised clips into normal Reaper items that start at 
+                // the reference clip's timeline offset
+                refClips.forEach(refClip => {
+                    const mediaRef = refClip.getAttribute("ref");
+                    const media = mediaMap.get(mediaRef);
+
+                    if (!media)
+                    {
+                        console.log("Couldn't resolve ref-clip media:", mediaRef);
+                        return;
+                    }
+
+                    const lane = findLane(refClip);
+
+                    if (lane === null)
+                        return;
+
+                    const sequenceSpine = media.querySelector("sequence > spine");
+
+                    if (!sequenceSpine)
+                        return;
+
+                    const refStart = parseTimeValue(refClip.getAttribute("start") || "0/1s");
+                    const offset = parseTimeValue(refClip.getAttribute("offset") || "0/1s");
+                    const duration = parseTimeValue(refClip.getAttribute("duration") || "1/1s");
+
+                    const sourceClips = Array.from(sequenceSpine.querySelectorAll("asset-clip")).filter(sourceClip => {
+                        const sourceRef = sourceClip.getAttribute("ref");
+                        return assetMap.has(sourceRef);
+                    });
+
+                    let sourceClip = null;
+                    let sourceSequenceStart = 0;
+
+                    for (const candidate of sourceClips)
+                    {
+                        const candidateStart = getSequencePosition(candidate, sequenceSpine);
+                        const candidateDuration = parseTimeValue(candidate.getAttribute("duration") || "0/1s");
+
+                        if (refStart >= candidateStart && refStart < candidateStart + candidateDuration)
+                        {
+                            sourceClip = candidate;
+                            sourceSequenceStart = candidateStart;
+                            break;
+                        }
+                    }
+
+                    if (!sourceClip)
+                    {
+                        console.log("Couldn't find source audio for ref-clip:", refClip);
+                        return;
+                    }
+
+                    const refID = sourceClip.getAttribute("ref");
+                    const sourceStart = parseTimeValue(sourceClip.getAttribute("start") || "0/1s");
+
+                    // translate from synchronized-clip sequence time back into
+                    // the underlying WAV's source time.
+                    const start = sourceStart + (refStart - sourceSequenceStart);
+
+                    const name = sourceClip.getAttribute("name") || refClip.getAttribute("name") || "Unnamed Clip";
+                    const adjustVolume = refClip.querySelector('adjust-volume')?.getAttribute('amount') || "0";
+
                     newItems.push({
                         'name': name,
                         'lane': lane,
@@ -379,9 +483,9 @@
                         'offset': offset,
                         'start': start,
                         'duration': duration,
-                        'adjustVolume' : dbToReaperTrim(adjustVolume).toFixed(2)
+                        'adjustVolume': dbToReaperTrim(adjustVolume).toFixed(2)
                     });
-               });
+                });               
 
                console.log(newItems);
 
@@ -506,9 +610,15 @@
                             rppContent += `      VOLPAN ${adjustVolume} 0.0, 1.0, -1.0\n`;
                         }
                         
+                        // don't asume that item name and media source filename are the same! They're probably not,
+                        // especially after cam scratch/timecode audio syncup further back in the food chain
+                        let sourceFilename = name;                        
+                        if (assetMap.has(refID))
+                            sourceFilename = assetMap.get(refID).mediafilename.replace(/^"|"$/g, "");
+
                         rppContent += `      SOFFS ${start - assetstart}\n`;
                         rppContent += `      NAME "${name}"\n`;
-                        rppContent += `      <SOURCE WAVE\n        FILE \"${name}\"\n      >\n`;
+                        rppContent += `      <SOURCE WAVE\n        FILE "${sourceFilename}"\n      >\n`;
                         rppContent += `    >\n`;
                     });
                     rppContent += `  >\n`; // End TRACK    
